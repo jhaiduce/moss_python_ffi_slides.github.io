@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Shower Presentation Engine</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="shower/themes/material/styles/styles.css">
+    <link rel="stylesheet" href="highlight/styles/default.css" />
+    <style>
+
+        .shower {
+            --slide-ratio: calc(16 / 9);
+        }
+
+	.slide {
+	    padding:50px;
+	    padding-top:30px;
+	}
+
+	.slide::after{
+	    text-align: right;
+	}
+
+	.shower.full .slide pre mark:not(:only-child):not(.visited):not(.active).next {
+	    visibility: visible;
+	    background-color: transparent;
+	}
+
+	.shower.full .slide pre mark:not(:only-child).next {
+	    background-color: ;
+	}
+
+	.code_box {
+	    padding: 10px;
+	    border:1px solid black;
+	    border-radius: 10px;
+	    box-shadow: 2px 2px 5px rgb(70,70,70);
+	}
+
+	.code_file {
+	}
+	.cli {
+	}
+
+	.annotation_container {
+	    float: right;
+	    clear: right;
+	    margin-right: -80%;
+	    width: 70%;
+	    margin-top: 0.3rem;
+	    margin-bottom: 0;
+	    line-height: 1.3;
+	    vertical-align: baseline;
+	    position: relative;
+	}
+
+	.annotation {
+	    font-family: "Roboto", sans-serif;
+	    font-size: 24px/2;
+	}
+
+	.annotation.right {
+	    left: 20px;
+	}
+
+	.output {
+	    color: rgb(150,150,200);
+	}
+
+	.slide pre, .slide pre code.compact {
+	    font-size:0.75em;
+	    line-height:1;
+	}
+
+	.distrostatement{
+	    position: absolute;
+	    bottom:6px;
+	    left:10px;
+	    font-size:15px;
+	}
+
+	.slide pre code.hljs {
+	    padding: 0 0 0 var(--slide-left-side);;
+	}
+
+	mark code.hljs{
+	    display:inline;
+	}
+
+	.slide pre code:not(:only-child)::before {
+	    content:'';
+	    counter-increment:none;
+	    position:initial;
+	    margin:initial;
+	    color:initial;
+	}
+
+	.slide pre code {
+	    display:inline
+	}
+
+    </style>
+</head>
+<body class="shower list">
+
+    <header class="caption">
+      <h1>Interfacing Python with compiled languages</h1>
+      <p>John Haiducek</p>
+    </header>
+
+    <section class="slide" id="titleslide">
+
+      <h2>Interfacing Python with compiled languages</h2>
+      <h3>John Haiducek</h3>
+      <h3>Magnetosphere Online Seminar Series</h3>
+
+    <div class="distrostatement">DISTRIBUTION A: Approved for public release, distribution is unlimited</div>
+
+    </section>
+
+    <section class="slide">
+      <h2>Overview</h2>
+      <ul>
+	<li>Scope of this talk</li>
+	<li>How languages talk to each other</li>
+	<li>Python C API</li>
+	<li>F2PY</li>
+	<li>CFFI</li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <h2>What I hope you'll learn from this talk</h2>
+
+      <div class="columns two">
+	<div>
+	  <h3>If you're a C/Fortran programmer</h3>
+	  <ul>
+	    <li>Learn some options for wrapping your existing code with Python</li>
+	  </ul>
+	</div>
+	<div>
+	  <h3>If you're new to compiled languages</h3>
+	  <ul>
+	    <li>Get a basic picture of how Python interacts with other software</li>
+	    <li>See what undergirds popular libraries like Numpy</li>
+	  </ul>
+	</div>
+      </div>
+
+    </section>
+
+    <section class="slide">
+
+      <h2>Why wrap compiled code?</h2>
+      <i>(i.e., why not just write everything in Python?)</i>
+
+      <div class="columns two">
+	<div>
+	  <h3>Increased performance</h3>
+	  <ul>
+	    <li>Pure python code tends to be ~100x slower than compiled languages like C or Fortran</li>
+	    <li>Popular libraries like scipy and numpy achieve high performance partly by implementing things in C/Fortran</li>
+	  </ul>
+	</div>
+	<div>
+	<h3>Interface with other software</h3>
+	<ul>
+	  <li>Interface with the OS</li>
+	  <li>Create a GUI (e.g. QT, GTK, TK)</li>
+	  <li>Use a library to support a specific file format (e.g. HDF5, netCDF)</li>
+	  <li>Read/write to a database (e.g. sqlite, mariadb)</li>
+	  <li>Provide a Python interface to an application (e.g. Blender, Paraview)</li>
+	  </ul>
+	</div>
+      </div>
+
+    </section>
+
+    <section class="slide">
+      <h2>Interfacing methods covered in this talk</h2>
+
+      <table>
+	<tr>
+	  <td>Python C API</td>
+	  <td>Low level, most direct interaction with Python interpreter. Lots of boilerplate code.</td>
+	</tr>
+	<tr>
+	  <td>f2py</td>
+	  <td>Easy to use, generates wrappers for Fortran procedures.</td>
+	</tr>
+	<tr>
+	  <td>CFFI (C Foreign function interface)</td>
+	  <td>Convenient for calling into a previously-compiled shared library</td>
+	</tr>
+      </table>
+    </section>
+
+    <section class="slide">
+      <h2>Other techniques</h2>
+      <table>
+	<tr>
+	  <td>ctypes</td>
+	  <td>Similar capabilities to CFFI. Built in to Python, but arguably harder to use than CFFI and reportedly lower performance in some cases.</td>
+	<tr>
+	  <td>SWIG (Simplified Wrapper Interface Generator)</td>
+	  <td>Generates wrappers to interface C/C++ code with many other languages (including Python)</td>
+	</tr>
+	<tr>
+	  <td>Boost.Python</td>
+	  <td>Reduced boilerplate, C++-only</td>
+	<tr>
+	  <td>Subprocesses and file i/o</td>
+	  <td>Can be simpler to implement, but adds additional overhead</td>
+	</tr>
+      </table>
+    </section>
+
+    <section class="slide">
+      <h2>How languages talk to each other</h2>
+      <div class="columns two">
+	<div>
+	  <b>Connecting codes at runtime requires a common application binary interface (ABI)</b>
+	  <ul>
+	    <li>Defines how function calls are represented in machine code</li>
+	    <li>Defines fundamental data types</li>
+	  </ul>
+	</div>
+	<div>
+	  <b>C is the only language with a standard ABI</b>
+	  <ul>
+	    <li>As a result, C has become the lingua franca for interfaces between languages.</li>
+	    <li>This doesn't mean that you have to write your code in C...but it does mean that function interfaces to other languages <i>must adhere to the C ABI</i>.</li>
+	  </ul>
+	  
+	</div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <h2>How languages talk to each other&mdash;C++</h2>
+
+      To interface to the C function <pre><code class="language-c">int myfunction(int i, int *j);</code></pre>
+
+      <pre class="code_box code_file">
+	<code class="language-c++">extern "C" {<br/>
+  int myfunction(int i, int *j*);<br/>
+}</code>
+      </pre>
+      <ul>
+	<li><code class="language-c++">extern "C"</code> turns off name mangling</li>
+	<li>Additional wrappers required to
+	  <ul>
+	    <li>pass C++ classes to C functions</li>
+	    <li>call class member functions from C</li>
+	  </ul>
+      </ul>
+
+    </section>
+
+    <section class="slide">
+      <h2>How languages talk to each other&mdash;Fortran</h2>
+
+      To interface to the C function <pre><code class="language-c">int myfunction(int i, int *j);</code></pre>
+
+      <pre class="code_box code_file">
+	<code class="language-fortran">integer(c_int) function myfunction(i, j) bind(c)<br/>
+  use iso_c_binding, only: c_int<br/>
+  integer(c_int), value::i<br/>
+  integer(c_int)::j<br/>
+end function</code>
+      </pre>
+
+      <ul>
+	<li><code class="language-fortran">bind(c)</code> turns off name mangling</li>
+	<li>Argument types limited to those in the intrinsic iso_c_binding module</li>
+      </ul>
+
+    </section>
+
+    <section class="slide">
+      <h2>How languages talk to each other&mdash;Interpreted languages</h2>
+
+      Interpreted languages access the C ABI by either
+
+      <ul>
+	<li>Providing a C API that enables C programs to interact with the interpreter</li>
+	<li>Providing a <i>foreign function interface</i> (FFI) that enables programs to call C library functions</li>
+      </ul>
+
+      <i>Python does both</i>
+
+    </section>
+
+    <section class="slide">
+      <h3>The Python C API</h3>
+
+      With the C API you can
+      <ul>
+	<li>Create Python extension modules</li>
+	<li>Embed Python in an application</li>
+	<li>Documentation: <a href="https://docs.python.org/3/c-api/index.html">https://docs.python.org/3/c-api/index.html</a></li>
+	<li>Official tutorial: <a href="https://docs.python.org/3/c-api/index.htmlhttps://docs.python.org/3/extending/index.html">https://docs.python.org/3/c-api/index.htmlhttps://docs.python.org/3/extending/index.html</a></li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <h2>C Extension module example</h2>
+
+      <b>square.c:</b>
+      <pre class="code_box" style="height:75%; overflow:scroll">
+	<code class="language-c compact">#define PY_SSIZE_T_CLEAN
+#include &lt;Python.h&gt;
+
+static PyObject * square (PyObject *self, PyObject *args)
+{
+    double input;
+    int sts;
+
+    if (!PyArg_ParseTuple(args, "d", &input))
+        return NULL;
+
+    double output = input*input;
+
+    return PyFloat_FromDouble(output);
+}
+
+static PyMethodDef squareMethods[] = {
+    {"square",  square, METH_VARARGS,
+     "Square a number."},
+    {NULL, NULL, 0, NULL}        /* Sentinel */
+};
+
+static struct PyModuleDef squareModule = {
+    PyModuleDef_HEAD_INIT,
+    "square",   /* name of module */
+    "Square numbers", /* module documentation, may be NULL */
+    -1,       /* size of per-interpreter state of the module,
+                 or -1 if the module keeps state in global variables. */
+    squareMethods
+};
+
+PyMODINIT_FUNC PyInit_square(void)
+{
+    return PyModule_Create(&squareModule);
+}</code>
+      </pre>
+
+    </section>
+
+    <section class="slide">
+      <h2>Compiling a C extension module</h2>
+
+      <b>setup.py:</b>
+      <pre class="code_box" style="max-height:80%; overflow:scroll">
+	<code class="language-python compact">from distutils.core import setup, Extension
+
+square = Extension('square',
+                    sources = ['square.c'])
+
+setup (name = 'square',
+       version = '1.0',
+       description = 'This is a demo package',
+       ext_modules = [square])</code>
+      </pre>
+
+      <b>Build and install with:</b> <code class="language-bash">python setup.py install</code> or <code class="language-bash">pip install '.'</code>
+
+    </section>
+
+    <section class="slide">
+      <h2 style="margin-bottom:16px;">Building with other build systems</h2>
+
+      <b>CMakeLists.txt:</b>
+      <pre class="code_box" style="max-height:65%; overflow:scroll">
+	<code class="language-cmake compact">cmake_minimum_required(VERSION 3.9.5)
+
+project(square)
+
+find_package(Python 3.5 COMPONENTS Development REQUIRED)
+
+add_library(square MODULE square.c)
+
+set_target_properties(
+  square
+  PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "square"
+      LINKER_LANGUAGE C
+  )
+
+target_link_libraries(square Python::Module)
+
+enable_testing()
+add_test(test_square ${PYTHON_EXECUTABLE} -c
+  "from square import square; \
+   y=square(2.0); \
+   assert y==4.0")
+
+
+add_custom_target(run_tests ALL DEPENDS square)
+add_custom_command(
+     TARGET run_tests
+     POST_BUILD
+     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C $<CONFIGURATION>
+)</code>
+      </pre>
+
+      <b>Build and install with:</b> <code class="language-bash">mkdir build && cmake .. && make -j8</code>
+
+    </section>
+
+    <section class="slide">
+      <h2>Running extension modules</h2>
+
+      Compiled extension modules can be used just like any other Python module:
+      <pre class="code_box"><code class="language-python">import square
+y=square(2.0)</code>
+      </pre>
+
+    </section>
+
+    <section class="slide">
+      <h2>f2py: Generating extension modules for Fortran code</h2>
+
+      F2py (<a href="https://numpy.org/doc/stable/f2py/">https://numpy.org/doc/stable/f2py/</a>) also uses the Python C API but it automates most of the process:
+      <ul>
+	<li>It scans Fortran source code for procedures to wrap</li>
+	<li>It generates wrapper code in C using the Python C API</li>
+	<li>It compiles and links the Fortran code and the C wrapper</li>
+      </ul>
+
+    </section>
+
+    <section class="slide">
+      <h2>f2py: Generating extension modules from Fortran code</h2>
+
+      <p><b>To wrap this (fortfuncs.f90):</b>
+      <pre class="code_box"><code class="language-fortran compact">module fortfuncs
+  implicit none
+contains
+  subroutine square(x,y)
+    integer, intent(in) :: x
+    integer, intent(out) :: y
+    y = x*x
+  end subroutine square
+end module fortfuncs</code>
+      </pre></p>
+
+      <b>Run the command</b> <code class="language-bash">f2py -m fortfuncs -c fortfuncs.f90</code>
+
+    </section>
+
+    <section class="slide">
+      <h2>f2py caveat</h2>
+
+      <ul>
+	<li>F2Py wrapper code makes no use of iso_c_binding. This probably means that f2py uses older techniques that predate iso_c_binding. These techniques involve making assumptions about how the compiler converts Fortran code to machine code, which are not guaranteed to be correct.</li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <h2>CFFI: Call a shared library from python</h2>
+
+      <ul>
+	<li>CFFI is based on libffi (<a href="https://sourceware.org/libffi/">https://sourceware.org/libffi/</a>), a foreign function interface (FFI) library</li>
+	<li>With CFFI you can load a shared library and call functions stored inside it.</li>
+	<li>CFFI documentation can be found at <a href="https://cffi.readthedocs.io/en/latest/">https://cffi.readthedocs.io/en/latest/</a></li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <h2>CFFI: Call a shared library from python</h2>
+
+      Suppose you have already compiled the C function <code>square</code> to a shared library (libsquare.so, say). Then you can load the library and call the function using cffi module:
+
+      <pre class="code_box" style="height:55%; overflow:scroll"><code class="language-python compact">from cffi import FFI
+
+ffi=FFI()
+
+ffi.cdef("""
+double square(double);
+""")
+
+def get_sharedlib_extension():
+    import os
+    import sys
+
+    is_windows = os.name == "nt"
+    is_apple = sys.platform == "darwin"
+    if is_windows:
+        ext = ".dll"
+    elif is_apple:
+        ext = ".dylib"
+    else:
+        ext = ".so"
+
+    return ext
+
+ext=get_sharedlib_extension()
+lib=ffi.dlopen('./libsquare'+ext)
+
+# Wrapper for the C function 'square'
+def square(x):
+    return lib.square(x)
+      </code></pre>
+
+    </section>
+
+    <section class="slide">
+      <h2>Passing arrays: Numpy C API</h2>
+
+      Numpy provides its own C API that adds support for Numpy data types on top of Python's own API.
+
+      <ul>
+	<li><a href="https://numpy.org/devdocs/user/c-info.html">https://numpy.org/devdocs/user/c-info.html</a> &mdash; Numpy C API documentation</li>
+	<li><a href="https://scipy-lectures.org/advanced/interfacing_with_c/interfacing_with_c.html">https://scipy-lectures.org/advanced/interfacing_with_c/interfacing_with_c.html</a> &mdash; Tutorial on the Numpy C API</li>
+      </ul>
+    </section>
+
+    <section class="slide">
+      <h2>Passing arrays: Numpy C API</h2>
+
+      <div>Working with Numpy arrays requires using Numpy's C API in addition to the Python C API.</div>
+
+      <b>square.c:</b>
+      <pre class="code_box" style="height:55%; overflow:scroll">
+	<code class="language-c compact">#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include <numpy/arrayobject.h>
+#include <numpy/ndarraytypes.h>
+
+/* Square each element of an array and store the output
+   in another array of the same size */
+void square(double *input, double *output, int len)
+{
+  for(int i=0; i&lt;len; i++)
+    {
+      output[i] = input[i]*input[i];
+    }
+}
+
+/* Python wrapper for the square function */
+static PyObject *
+square_np (PyObject *self, PyObject *args)
+{
+  PyObject *input;
+  PyArrayObject *output = NULL;
+
+  /* Parse arguments */
+  if (!PyArg_ParseTuple(args, "O", &input))
+    return NULL;
+
+  /* Convert input to a contiguous numpy array of type double */
+  PyArrayObject * in_arr = (PyArrayObject *) PyArray_FROM_OTF
+    (input, NPY_DOUBLE, NPY_ARRAY_IN_ARRAY);
+
+  if (in_arr == NULL)
+    goto fail;
+
+  /* Get array size */
+  int ndim = PyArray_NDIM(in_arr);
+  npy_intp * shape = PyArray_DIMS(in_arr);
+  int len = (int) PyArray_SIZE(in_arr);
+
+  /* Create output array */
+  output = PyArray_SimpleNew(ndim, shape, NPY_DOUBLE);
+
+  /* Get pointers to input and output data */
+  double * in_data = (double *) PyArray_DATA(in_arr);
+  double * out_data = (double *) PyArray_DATA(output);
+
+  /* Square all elements */
+  square(in_data, out_data, size);
+
+  /* Decrement reference count of in_arr since it won't be returned */
+  Py_DECREF(in_arr);
+
+  return output;
+
+ fail:
+  /* Decrement reference counts and return NULL */
+  Py_XDECREF(in_arr);
+  Py_XDECREF(output);
+  return NULL;
+}
+
+static PyMethodDef squareMethods[] = {
+  {"square",  square_np, METH_VARARGS,
+   "Square each element of an array."},
+  {NULL, NULL, 0, NULL}        /* Sentinel */
+};
+
+static struct PyModuleDef squareModule = {
+  PyModuleDef_HEAD_INIT,
+  "square",   /* name of module */
+  "Square elements of arrays", /* module documentation, may be NULL */
+  -1,       /* size of per-interpreter state of the module,
+	       or -1 if the module keeps state in global variables. */
+  squareMethods
+};
+
+PyMODINIT_FUNC
+PyInit_square(void)
+{
+  import_array();
+  return PyModule_Create(&squareModule);
+}</code></pre>
+
+    </section>
+
+    <section class="slide">
+      <h2>Passing arrays: f2py</h2>
+
+      <pre class="code_box"><code class="language-fortran compact">module fortfuncs
+
+  implicit none
+
+contains
+
+  subroutine square(x,y,n)
+
+    real, intent(in) :: x(n)
+
+    real, intent(out) :: y(n)
+
+    integer, intent(in) :: n
+
+    y = x * x
+
+  end subroutine square
+
+end module fortfuncs</code>
+      </pre>
+
+      <b>Run the command</b> <code class="language-bash">f2py -m fortfuncs -c fortfuncs.f90</code> (same as previous example)
+
+    </section>
+
+    <section class="slide">
+      <h2>Passing arrays: cffi</h2>
+
+      Use numpy.ndarray.ctypes.data to get an array's data pointer, then ffi.cast to convert it to a C pointer that can be passed to the C function.
+
+      <pre class="code_box" style="height:55%; overflow:scroll"><code class="language-python compact">from cffi import FFI
+
+ffi=FFI()
+
+ffi.cdef("""
+double square(double*, double*, int);
+""")
+
+def get_sharedlib_extension():
+    import os
+    import sys
+
+    is_windows = os.name == "nt"
+    is_apple = sys.platform == "darwin"
+    if is_windows:
+        ext = ".dll"
+    elif is_apple:
+        ext = ".dylib"
+    else:
+        ext = ".so"
+
+    return ext
+
+ext=get_sharedlib_extension()
+lib=ffi.dlopen('./libsquare'+ext)
+
+# Wrapper for the C function 'square'
+def square(x):
+
+    import numpy as np
+
+    input_arr = np.ascontiguousarray(x,dtype=np.double)
+    output_arr = np.ascontiguousarray(np.empty(input_arr.shape),dtype=np.double)
+
+    input_ptr = ffi.cast('double*',input_arr.ctypes.data)
+    output_ptr = ffi.cast('double*',output_arr.ctypes.data)
+
+    lib.square(input_ptr,output_ptr,input_arr.size)
+
+    return output_arr
+
+if __name__=='__main__':
+
+    print(square([2,3,4]))</code></pre>
+
+    </section>
+
+    <section class="slide" id="learnmore">
+      <h2>Where to learn more</h2>
+
+      <dl>
+	<dt>Python/Numpy C API</dt>
+	<dd>
+	  <ul>
+	    <li>https://docs.python.org/3/extending/index.html</li>
+	    <li>https://docs.python.org/3/c-api/index.html</li>
+	    <li>https://numpy.org/devdocs/user/c-info.html</li>
+	    <li>https://scipy-lectures.org/advanced/interfacing_with_c/interfacing_with_c.html</li>
+	  </ul>
+	</dd>
+	<dt>f2py</dt>
+	<dd>
+	  <ul>
+	    <li>https://numpy.org/devdocs/f2py/index.html</li>
+	  </ul>
+	</dd>
+	<dt>CFFI</dt>
+	<dd>
+	  <ul>
+	    <li>https://cffi.readthedocs.io/en/latest/</li>
+	  </ul>
+	</dd>
+      </dl>
+
+      <style>
+	#learnmore li { line-height:1.6}
+	#learnmore ul { margin-bottom:12px}
+      </style>
+
+    </section>
+
+    <div class="progress"></div>
+
+    <script src="shower/shower.js"></script>
+    <script src="highlight/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
+    <!-- Copyright © 2021 Yours Truly, Famous Inc. -->
+
+</body>
+</html>
